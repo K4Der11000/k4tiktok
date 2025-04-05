@@ -1,98 +1,133 @@
-from flask import Flask, request, render_template_string, send_file, redirect from selenium import webdriver from selenium.webdriver.common.by import By import time import os import sys import random from faker import Faker import pdfkit from datetime import datetime
+# TikTok Account Creator - Web Interface
+# Author: kader11000
+# Requirements:
+#   pip install flask selenium faker pdfkit
+#   Install wkhtmltopdf version 0.12.6 (see below for instructions)
 
-app = Flask(name) fake = Faker() config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+"""
+INSTALLING WKHTMLTOPDF 0.12.6 ON ALL SYSTEMS:
 
-Admin password for login
+1. WINDOWS:
+   - Download: https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6/wkhtmltox-0.12.6-1.msvc2015-win64.exe
+   - Install it, then set path in Python:
+     config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+
+2. LINUX (Ubuntu/Debian):
+   sudo apt update
+   sudo apt install -y xfonts-75dpi xfonts-base libjpeg-turbo8
+   wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6/wkhtmltox_0.12.6-1.buster_amd64.deb
+   sudo apt install ./wkhtmltox_0.12.6-1.buster_amd64.deb
+   
+   config = pdfkit.configuration(wkhtmltopdf='/usr/local/bin/wkhtmltopdf')
+
+3. MACOS:
+   brew install --cask wkhtmltopdf
+   Or download from:
+   https://github.com/wkhtmltopdf/wkhtmltopdf/releases/tag/0.12.6
+"""
+
+from flask import Flask, request, render_template_string, send_file, redirect
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+import time
+import os
+import sys
+import random
+from faker import Faker
+import pdfkit
+from datetime import datetime
+
+app = Flask(__name__)
+fake = Faker()
+config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
 
 ADMIN_PASSWORD = "kader11000"
+HTML_FILE = "tiktok_results.html"
+results = []
 
-HTML_FORM = """
+HELP_SECTION = """
+<h2>Help & Installation</h2>
+<pre style='background:#f5f5f5;padding:10px;border-radius:5px;'>
+INSTALLING WKHTMLTOPDF 0.12.6:
 
-<html>
-<head><title>TikTok Account Creator</title></head>
-<body>
-    <h2>Create TikTok Account</h2>
-    {% if message %}<p style='color: green;'>{{ message }}</p>{% endif %}
-    <form method="post" action="/register">
-        <label>Email:</label><br>
-        <input type="text" name="email"><br>
-        <label>Password:</label><br>
-        <input type="text" name="password"><br>
-        <label>Username:</label><br>
-        <input type="text" name="username"><br>
-        <label>Day:</label><br>
-        <input type="number" name="day"><br>
-        <label>Month:</label><br>
-        <input type="number" name="month"><br>
-        <label>Year:</label><br>
-        <input type="number" name="year"><br><br>
-        <input type="submit" value="Register">
-    </form><button type="button" onclick="autofill()">Auto Fill Random Data</button>
+1. WINDOWS:
+ - Download: https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6/wkhtmltox-0.12.6-1.msvc2015-win64.exe
+ - Install and set path in script:
+   config = pdfkit.configuration(wkhtmltopdf=r"C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe")
 
-<form method="post" action="/auto">
-    <input type="submit" value="Auto Create One Account">
-</form>
+2. LINUX (Ubuntu/Debian):
+ sudo apt update
+ sudo apt install -y xfonts-75dpi xfonts-base libjpeg-turbo8
+ wget https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.6/wkhtmltox_0.12.6-1.buster_amd64.deb
+ sudo apt install ./wkhtmltox_0.12.6-1.buster_amd64.deb
 
-<form method="post" action="/auto-multi">
-    <label>Number of accounts:</label><br>
-    <input type="number" name="count" min="1" max="50" value="5"><br><br>
-    <input type="submit" value="Auto Create Multiple Accounts">
-</form>
+3. MACOS:
+ brew install --cask wkhtmltopdf
+ Or: https://github.com/wkhtmltopdf/wkhtmltopdf/releases/tag/0.12.6
+</pre>
+"""
 
-<form method="get" action="/accounts">
-    <input type="submit" value="View Saved Accounts">
-</form>
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        password = request.form.get("password")
+        if password != ADMIN_PASSWORD:
+            return "Unauthorized access"
+        mode = request.form.get("mode")
+        if mode == "auto":
+            for _ in range(5):  # example: create 5 accounts
+                results.append(create_account())
+        return redirect("/")
+    return render_template_string(f"""
+        <html><body style='font-family:Arial;padding:20px;'>
+        <h1>TikTok Account Creator - kader11000</h1>
+        <form method="post">
+            Password: <input type="password" name="password"><br>
+            <button name="mode" value="manual">Create One Account</button>
+            <button name="mode" value="auto">Auto Create</button>
+        </form><br>
+        <a href='/results'>View Results</a> |
+        <a href='/download'>Download HTML</a> |
+        <a href='/restart'>Restart Script</a> |
+        <a href='/help'>Help</a>
+        </body></html>
+    """)
 
-<form method="get" action="/download-pdf">
-    <input type="submit" value="Download Accounts as PDF">
-</form>
+@app.route("/results")
+def view_results():
+    table = "<table border='1'><tr><th>Username</th><th>Password</th><th>Date</th></tr>"
+    for r in results:
+        table += f"<tr><td>{r['username']}</td><td>{r['password']}</td><td>{r['date']}</td></tr>"
+    table += "</table>"
+    with open(HTML_FILE, "w", encoding="utf-8") as f:
+        f.write(table)
+    return table
 
-<form method="post" action="/restart-script">
-    <input type="submit" value="Restart Script">
-</form>
+@app.route("/download")
+def download():
+    return send_file(HTML_FILE, as_attachment=True)
 
-<script>
-function autofill() {
-    document.querySelector('input[name="email"]').value = "user" + Math.floor(Math.random() * 10000) + "@example.com";
-    document.querySelector('input[name="password"]').value = Math.random().toString(36).slice(2, 10);
-    document.querySelector('input[name="username"]').value = "user" + Math.floor(Math.random() * 100000);
-    document.querySelector('input[name="day"]').value = Math.floor(Math.random() * 28 + 1);
-    document.querySelector('input[name="month"]').value = Math.floor(Math.random() * 12 + 1);
-    document.querySelector('input[name="year"]').value = Math.floor(Math.random() * (2003 - 1985 + 1)) + 1985;
-}
-</script>
+@app.route("/restart")
+def restart():
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
 
-</body>
-</html>
-"""LOGIN_FORM = """
+@app.route("/help")
+def help_page():
+    return f"""
+    <html><head><title>Help - TikTok Creator</title></head>
+    <body style='font-family:Arial;padding:20px;'>
+    <a href='/'>Back to Home</a>
+    {HELP_SECTION}
+    </body></html>
+    """
 
-<html>
-<head><title>Login</title></head>
-<body>
-    <h2>Login</h2>
-    <form method="post">
-        <label>Password:</label><br>
-        <input type="password" name="password"><br><br>
-        <input type="submit" value="Login">
-    </form>
-    {% if error %}<p style='color:red;'>{{ error }}</p>{% endif %}
-</body>
-</html>
-"""def save_account_to_html(email, password, username, day, month, year): file_name = "accounts.html" timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S") entry = f""" <tr> <td>{email}</td> <td>{password}</td> <td>{username}</td> <td>{day}/{month}/{year}</td> <td>{timestamp}</td> </tr> """ if not os.path.exists(file_name): with open(file_name, "w", encoding="utf-8") as f: f.write(f""" <html> <head> <title>Saved TikTok Accounts</title> <style> body {{ font-family: Arial; background-color: #f8f9fa; padding: 20px; }} table {{ width: 100%; border-collapse: collapse; background-color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }} th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ccc; }} th {{ background-color: #007bff; color: white; }} tr:hover {{ background-color: #f1f1f1; }} </style> </head> <body> <h2>Accounts Created</h2> <table> <tr><th>Email</th><th>Password</th><th>Username</th><th>Birthdate</th><th>Timestamp</th></tr> {entry} </table> </body> </html> ") else: with open(file_name, "r+", encoding="utf-8") as f: content = f.read() f.seek(0) f.truncate() content = content.replace("</table>", entry + "</table>") f.write(content)
+def create_account():
+    # Fake generation for demo
+    username = fake.user_name()
+    password = fake.password()
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return {"username": username, "password": password, "date": created_at}
 
-@app.route("/", methods=["GET", "POST"]) def index(): if request.method == "POST": password = request.form.get("password") if password == ADMIN_PASSWORD: return render_template_string(HTML_FORM) else: return render_template_string(LOGIN_FORM, error="Incorrect password.") return render_template_string(LOGIN_FORM)
-
-@app.route("/register", methods=["POST"]) def register(): email = request.form["email"] password = request.form["password"] username = request.form["username"] day = request.form["day"] month = request.form["month"] year = request.form["year"] save_account_to_html(email, password, username, day, month, year) return render_template_string(HTML_FORM, message="Account saved.")
-
-@app.route("/auto", methods=["POST"]) def auto_create(): email = f"user{random.randint(1000, 9999)}@example.com" password = fake.password(length=8) username = f"user{random.randint(10000, 99999)}" day = random.randint(1, 28) month = random.randint(1, 12) year = random.randint(1985, 2003) save_account_to_html(email, password, username, day, month, year) return render_template_string(HTML_FORM, message=f"Account created automatically: {email}")
-
-@app.route("/auto-multi", methods=["POST"]) def auto_multi(): count = int(request.form.get("count", 1)) success = 0 for _ in range(count): email = f"user{random.randint(1000, 9999)}@example.com" password = fake.password(length=8) username = f"user{random.randint(10000, 99999)}" day = random.randint(1, 28) month = random.randint(1, 12) year = random.randint(1985, 2003) save_account_to_html(email, password, username, day, month, year) success += 1 return render_template_string(HTML_FORM, message=f"{success} of {count} accounts created successfully.")
-
-@app.route("/accounts") def show_accounts(): if os.path.exists("accounts.html"): with open("accounts.html", "r", encoding="utf-8") as f: return f.read() else: return "No saved accounts."
-
-@app.route("/download-pdf") def download_pdf(): html_file = "accounts.html" pdf_file = "accounts.pdf" if not os.path.exists(html_file): return "No saved accounts yet." pdfkit.from_file(html_file, pdf_file, configuration=config) return send_file(pdf_file, as_attachment=True)
-
-@app.route("/restart-script", methods=["POST"]) def restart_script(): python = sys.executable os.execl(python, python, *sys.argv)
-
-if name == "main": app.run(debug=True)
-
+if __name__ == "__main__":
+    app.run(debug=True)
